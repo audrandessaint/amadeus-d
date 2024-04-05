@@ -9,6 +9,11 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub "${AWS::StackName}-OriginalSearchesQueue"
+    
+  FilteredSearchesQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-FilteredSearchesQueue"
 
   InitStackFunction:
     Type: AWS::Serverless::Function
@@ -17,7 +22,7 @@ Resources:
       - DecoratedSearchStorageWorkGroup
     Properties:
       Description: Initializes the Redshift database by creating the recommendations table
-      CodeUri: src/InitStackFunction
+      CodeUri: src/init-stack-function
       Handler: app.lambda_handler
       Runtime: python3.12
       Environment:
@@ -38,8 +43,9 @@ Resources:
     DependsOn: 
       - OriginalSearchesQueue
       - FilteredSearchesQueue
+      - CurrencyCacheTable
     Properties:
-      CodeUri: src/FilterLambda
+      CodeUri: src/filter-function
       Handler: app.lambda_handler
       Runtime: python3.12
       Timeout: 15
@@ -57,10 +63,40 @@ Resources:
             BatchSize: 10
             Enabled: true
 
+  StoreFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: 
+      - FilteredSearchesQueue
+      - DecoratedSearchStorageNamespace
+      - DecoratedSearchStorageWorkGroup
+    Properties:
+      CodeUri: src/store-function
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 15
+      Environment:
+        Variables:
+          QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+      Policies: 
+        - Version: '2012-10-17'
+          Statement: 
+            - Effect: Allow
+              Resource: !GetAtt DecoratedSearchStorageWorkGroup.Workgroup.WorkgroupArn
+              Action: 
+                - redshift-data:ExecuteStatement
+                - redshift-serverless:GetCredentials
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt FilteredSearchesQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
   GetCurrencyFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/GetCurrencyLambda
+      CodeUri: src/get-currency-function
       Handler: app.lambda_handler
       Runtime: python3.12
       Timeout: 15
@@ -107,8 +143,8 @@ Resources:
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
         
-Outputs:
-  PublishMessageFunctionUrlEndpoint:
-      Description: "Publish Function URL Endpoint"
-      Value:
-        !GetAtt PublishMessageFunctionUrl.FunctionUrl
+#Outputs:
+#  PublishMessageFunctionUrlEndpoint:
+#      Description: "Publish Function URL Endpoint"
+#      Value:
+#        !GetAtt PublishMessageFunctionUrl.FunctionUrl

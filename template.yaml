@@ -1,209 +1,197 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-
-Description: >
-  Template to deploy resources of the streaming price benchmark system
-
 Resources:
-  OriginalSearchesQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub "${AWS::StackName}-OriginalSearchesQueue"
-    
-  FilteredSearchesQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub "${AWS::StackName}-FilteredSearchesQueue"
-
-  BackupStorageQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub "${AWS::StackName}-BackupStorageQueue"
-
-  InitStackFunction:
+  ProducerFunction:
     Type: AWS::Serverless::Function
-    DependsOn: 
-      - DecoratedSearchStorageNamespace
-      - DecoratedSearchStorageWorkGroup
     Properties:
-      Description: Initializes the Redshift database by creating the recommendations table
-      CodeUri: src/init-stack-function
+      CodeUri: src/producer
       Handler: app.lambda_handler
-      Runtime: python3.12
-      Environment:
-        Variables:
-          DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
-          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
-          WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
-          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
-      Policies: 
-        - Version: '2012-10-17'
-          Statement: 
-            - Effect: Allow
-              Resource: !GetAtt DecoratedSearchStorageWorkGroup.Workgroup.WorkgroupArn
-              Action: 
-                - redshift-data:ExecuteStatement
-                - redshift-serverless:GetCredentials
-
-  FilterLambdaFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: 
-      - OriginalSearchesQueue
-      - FilteredSearchesQueue
-      - BackupStorageQueue
-      - CurrencyCacheTable
-    Properties:
-      CodeUri: src/filter-function
-      Handler: app.lambda_handler
-      Runtime: python3.12
-      Timeout: 15
-      Environment:
-        Variables:
-          OUTPUT_QUEUE_URL: !Sub "${FilteredSearchesQueue}"
-          BACKUP_STORAGE_QUEUE_URL: !Sub "${BackupStorageQueue}"
-      Policies: 
-        - SQSSendMessagePolicy:
-            QueueName: !Ref FilteredSearchesQueue
-        - SQSSendMessagePolicy:
-            QueueName: !Ref BackupStorageQueue
+      Runtime: python3.8
       Events:
-        SQSEvent:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt OriginalSearchesQueue.Arn
-            BatchSize: 10
-            Enabled: true
-
-  StoreFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: 
-      - FilteredSearchesQueue
-      - DecoratedSearchStorageNamespace
-      - DecoratedSearchStorageWorkGroup
-    Properties:
-      CodeUri: src/store-function
-      Handler: app.lambda_handler
-      Runtime: python3.12
-      Timeout: 15
-      Environment:
-        Variables:
-          DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
-          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
-          WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
-          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
-      Policies: 
-        - Version: '2012-10-17'
-          Statement: 
-            - Effect: Allow
-              Resource: !GetAtt DecoratedSearchStorageWorkGroup.Workgroup.WorkgroupArn
-              Action: 
-                - redshift-data:ExecuteStatement
-                - redshift-serverless:GetCredentials
-      Events:
-        SQSEvent:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt FilteredSearchesQueue.Arn
-            BatchSize: 10
-            Enabled: true
-
-  GetCurrencyFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/get-currency-function
-      Handler: app.lambda_handler
-      Runtime: python3.12
-      Timeout: 15
-      FunctionUrlConfig:
-        AuthType: NONE
-      Environment:
-        Variables:
-          CURRENCY_CACHE_TABLE: !Ref CurrencyCacheTable
-          API_URL: https://data-api.ecb.europa.eu/service/data/EXR/D..EUR.SP00.A
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref CurrencyCacheTable
-      Events:
-        ScheduleEvent:
+        Timer:
           Type: Schedule
           Properties:
-            Schedule: cron(17 0 * * ? *)
-            Enabled: false
-
-  DecoratedSearchStorageNamespace:
-    Type: AWS::RedshiftServerless::Namespace
-    Properties:
-      NamespaceName: !Sub "${AWS::StackName}-decorated-search-storage-ns"
-      DbName: !Sub "${AWS::StackName}-decorated-search-storage-db"
-
-  DecoratedSearchStorageWorkGroup:
-    Type: AWS::RedshiftServerless::Workgroup
-    Properties:
-      WorkgroupName: !Sub "${AWS::StackName}-decorated-search-storage-wg"
-      NamespaceName: !Ref DecoratedSearchStorageNamespace
-      BaseCapacity: 32
-
-  CurrencyCacheTable:
-    Type: AWS::DynamoDB::Table
-    Properties: 
-      TableName: !Sub "${AWS::StackName}-currency-cache-table"
-      AttributeDefinitions: 
-        - AttributeName: dateISO
-          AttributeType: S
-        - AttributeName: currency_type
-          AttributeType: S
-        - AttributeName: exchange_rate
-          AttributeType: N
-      KeySchema: 
-        - AttributeName: currency_type
-          KeyType: HASH
-        - AttributeName: dateISO
-          KeyType: RANGE
-      ProvisionedThroughput: 
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
-      GlobalSecondaryIndexes: 
-      - IndexName: myIndex
-        KeySchema: 
-          - AttributeName: exchange_rate
-            KeyType: HASH
-        Projection: 
-          ProjectionType: KEYS_ONLY
-        ProvisionedThroughput: 
-          ReadCapacityUnits: 5
-          WriteCapacityUnits: 5
-
-  BackupStorageBucket:
-    Type: AWS::S3::Bucket
-    Properties: 
-      BucketName: !Sub "${AWS::StackName}-backup-storage-bucket"
-        
-  BackupStorageFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: 
-      - BackupStorageQueue
-      - BackupStorageBucket
-    Properties:
-      CodeUri: src/backup-function
-      Handler: app.lambda_handler
-      Runtime: python3.12
-      Timeout: 15
+            Schedule: rate(1 minute)
       Environment:
         Variables:
-          BUCKET_NAME: !Ref BackupStorageBucket
-      Policies: 
-        - S3WritePolicy:
-            BucketName: !Ref BackupStorageBucket
+          QUEUE_URL: !Ref MyQueue
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+                - sqs:ReceiveMessage
+                - sqs:SendMessage
+              Resource: !GetAtt MyQueue.Arn
+  MyQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: my-queue.fifo
+      FifoQueue: true
+      ContentBasedDeduplication: true
+  ConsumerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/consumer
+      Handler: app.lambda_handler
+      Runtime: python3.8
       Events:
         SQSEvent:
           Type: SQS
           Properties:
-            Queue: !GetAtt BackupStorageQueue.Arn
+            Queue: !GetAtt MyQueue.Arn
             BatchSize: 10
-            Enabled: true
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+                - sqs:ReceiveMessage
+              Resource: !GetAtt MyQueue.Arn
 
-#Outputs:
-#  PublishMessageFunctionUrlEndpoint:
-#      Description: "Publish Function URL Endpoint"
-#      Value:
-#        !GetAtt PublishMessageFunctionUrl.FunctionUrl
+
+#   OriginalSearchesQueue:
+#     Type: AWS::SQS::Queue
+#     Properties:
+#       QueueName: !Sub "${AWS::StackName}-OriginalSearchesQueue"
+    
+#   FilteredSearchesQueue:
+#     Type: AWS::SQS::Queue
+#     Properties:
+#       QueueName: !Sub "${AWS::StackName}-FilteredSearchesQueue"
+
+#   InitStackFunction:
+#     Type: AWS::Serverless::Function
+#     DependsOn: 
+#       - DecoratedSearchStorageNamespace
+#       - DecoratedSearchStorageWorkGroup
+#     Properties:
+#       Description: Initializes the Redshift database by creating the recommendations table
+#       CodeUri: src/init-stack-function
+#       Handler: app.lambda_handler
+#       Runtime: python3.12
+#       Environment:
+#         Variables:
+#           DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
+#           WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
+#       Policies: 
+#         - Version: '2012-10-17'
+#           Statement: 
+#             - Effect: Allow
+#               Resource: !GetAtt DecoratedSearchStorageWorkGroup.Workgroup.WorkgroupArn
+#               Action: 
+#                 - redshift-data:ExecuteStatement
+#                 - redshift-serverless:GetCredentials
+
+#   FilterLambdaFunction:
+#     Type: AWS::Serverless::Function
+#     DependsOn: 
+#       - OriginalSearchesQueue
+#       - FilteredSearchesQueue
+#       - CurrencyCacheTable
+#     Properties:
+#       CodeUri: src/filter-function
+#       Handler: app.lambda_handler
+#       Runtime: python3.12
+#       Timeout: 15
+#       Environment:
+#         Variables:
+#           QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+#       Policies: 
+#         - SQSSendMessagePolicy:
+#             QueueName: !GetAtt FilteredSearchesQueue.QueueName
+#       Events:
+#         SQSEvent:
+#           Type: SQS
+#           Properties:
+#             Queue: !GetAtt OriginalSearchesQueue.Arn
+#             BatchSize: 10
+#             Enabled: true
+
+#   StoreFunction:
+#     Type: AWS::Serverless::Function
+#     DependsOn: 
+#       - FilteredSearchesQueue
+#       - DecoratedSearchStorageNamespace
+#       - DecoratedSearchStorageWorkGroup
+#     Properties:
+#       CodeUri: src/store-function
+#       Handler: app.lambda_handler
+#       Runtime: python3.12
+#       Timeout: 15
+#       Environment:
+#         Variables:
+#           QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+#       Policies: 
+#         - Version: '2012-10-17'
+#           Statement: 
+#             - Effect: Allow
+#               Resource: !GetAtt DecoratedSearchStorageWorkGroup.Workgroup.WorkgroupArn
+#               Action: 
+#                 - redshift-data:ExecuteStatement
+#                 - redshift-serverless:GetCredentials
+#       Events:
+#         SQSEvent:
+#           Type: SQS
+#           Properties:
+#             Queue: !GetAtt FilteredSearchesQueue.Arn
+#             BatchSize: 10
+#             Enabled: true
+
+#   GetCurrencyFunction:
+#     Type: AWS::Serverless::Function
+#     Properties:
+#       CodeUri: src/get-currency-function
+#       Handler: app.lambda_handler
+#       Runtime: python3.12
+#       Timeout: 15
+#       FunctionUrlConfig:
+#         AuthType: NONE
+#       Environment:
+#         Variables:
+#           CURRENCY_CACHE_TABLE: !Ref CurrencyCacheTable
+#           API_URL: https://data-api.ecb.europa.eu/service/data/EXR/D..EUR.SP00.A
+#       Policies:
+#         - DynamoDBCrudPolicy:
+#             TableName: !Ref CurrencyCacheTable
+#       Events:
+#         ScheduleEvent:
+#           Type: Schedule
+#           Properties:
+#             Schedule: cron(17 0 * * ? *)
+#             Enabled: false
+
+#   DecoratedSearchStorageNamespace:
+#     Type: AWS::RedshiftServerless::Namespace
+#     Properties:
+#       NamespaceName: !Sub "${AWS::StackName}-decorated-search-storage-ns"
+#       DbName: !Sub "${AWS::StackName}-decorated-search-storage-db"
+
+#   DecoratedSearchStorageWorkGroup:
+#     Type: AWS::RedshiftServerless::Workgroup
+#     Properties:
+#       WorkgroupName: !Sub "${AWS::StackName}-decorated-search-storage-wg"
+#       NamespaceName: !Ref DecoratedSearchStorageNamespace
+#       BaseCapacity: 32
+
+#   CurrencyCacheTable:
+#     Type: AWS::DynamoDB::Table
+#     Properties: 
+#       TableName: !Sub "${AWS::StackName}-CurrencyCacheTable"
+#       AttributeDefinitions: 
+#         - AttributeName: currency_type
+#           AttributeType: S
+#       KeySchema: 
+#         - AttributeName: currency_type
+#           KeyType: HASH
+#       ProvisionedThroughput: 
+#         ReadCapacityUnits: 5
+#         WriteCapacityUnits: 5
+        
+# #Outputs:
+# #  PublishMessageFunctionUrlEndpoint:
+# #      Description: "Publish Function URL Endpoint"
+# #      Value:
+# #        !GetAtt PublishMessageFunctionUrl.FunctionUrl

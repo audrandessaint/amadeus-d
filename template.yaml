@@ -33,7 +33,9 @@ Resources:
       Environment:
         Variables:
           DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
+          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
           WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
+          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
       Policies: 
         - Version: '2012-10-17'
           Statement: 
@@ -57,7 +59,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+          OUTPUT_QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+          BACKUP_STORAGE_QUEUE_URL: !Sub "${BackupStorageQueue}"
       Policies: 
         - SQSSendMessagePolicy:
             QueueName: !Ref FilteredSearchesQueue
@@ -84,7 +87,10 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+          DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
+          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
+          WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
+          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
       Policies: 
         - Version: '2012-10-17'
           Statement: 
@@ -168,7 +174,7 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          QUEUE_URL: !Sub "${BackupStorageQueue}"
+          BUCKET_NAME: !Ref BackupStorageBucket
       Policies: 
         - S3WritePolicy:
             BucketName: !Ref BackupStorageBucket

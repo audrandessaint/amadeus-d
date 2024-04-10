@@ -2,22 +2,6 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Example of processing messages on an SQS queue with Lambda
 Resources:
-  # OriginalSearchesQueueFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     Handler: app.handler
-  #     CodeUri: src/consumer
-  #     Runtime: python3.8
-  #     Events:
-  #       MySQSEvent:
-  #         Type: SQS
-  #         Properties:
-  #           Queue: !GetAtt OriginalSearchesQueue.Arn
-  #           BatchSize: 10
-  # OriginalSearchesQueue:
-  #   Type: AWS::SQS::Queue
-  #   Properties:
-  #     QueueName: queue-bucket
   ProducerFunction:
     Type: AWS::Serverless::Function
     Properties:

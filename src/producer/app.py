@@ -17,7 +17,6 @@ def handler(event, context):
         for line in sorted_lines:
             send_message_to_sqs(queue_url, line)
             print("Message sent to SQS queue.")
-            sleep(10)
     else:
         print("No lines found in the CSV file.")
 

@@ -24,6 +24,10 @@ Resources:
       Handler: app.handler
       CodeUri: src/producer
       Runtime: python3.8
+      MemorySize: 1024 
+      Timeout: 300  
+      EphemeralStorage:
+        Size: 1024
       Policies:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt MySqsQueue.QueueName

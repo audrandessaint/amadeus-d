@@ -116,61 +116,28 @@ Resources:
             Schedule: cron(17 0 * * ? *)
             Enabled: false
 
-  GetCurrencyFunctionOnce:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/get-currency-function-once
-      Handler: app.lambda_handler
-      Runtime: python3.12
-      Timeout: 15
-      FunctionUrlConfig:
-        AuthType: NONE
-      Environment:
-        Variables:
-          CURRENCY_CACHE_TABLE: !Ref CurrencyCacheTable
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref CurrencyCacheTable
-      Events:
-        ScheduleEvent:
-          Type: Schedule
-          Properties:
-            Name: GetCurrencyOnceEvent
-            Schedule: rate(1 minute)
-            Enabled: true
-
-  # AfterCurrencyCacheTableCreation:
-  #   Type: AWS::Events::Rule
+  # GetCurrencyFunctionOnce:
+  #   Type: AWS::Serverless::Function
   #   Properties:
-  #     Description: "Trigger getCurrencyFunction after CurrencyCacheTable creation"
-  #     EventPattern:
-  #       source:
-  #         - aws.dynamodb
-  #       detail:
-  #         eventName:
-  #           - CreateTable
-  #         requestParameters:
-  #           tableName:
-  #             - !Ref CurrencyCacheTable
-  #     Targets:
-  #       - 
-  #         Arn: 
-  #           Fn::GetAtt: 
-  #             - "GetCurrencyFunction"
-  #             - "Arn"
-  #         Id: "GetCurrencyFunction"
-
-  # PermissionForCurrencyTableCreationEventToInvokeGetCurrencyFunction: 
-  #   Type: AWS::Lambda::Permission
-  #   Properties: 
-  #     FunctionName: 
-  #       Ref: GetCurrencyFunction
-  #     Action: lambda:InvokeFunction
-  #     Principal: events.amazonaws.com
-  #     SourceArn:
-  #       Fn::GetAtt: 
-  #           - "AfterCurrencyCacheTableCreation"
-  #           - "Arn" 
+  #     CodeUri: src/get-currency-function-once
+  #     Handler: app.lambda_handler
+  #     Runtime: python3.12
+  #     Timeout: 15
+  #     FunctionUrlConfig:
+  #       AuthType: NONE
+  #     Environment:
+  #       Variables:
+  #         CURRENCY_CACHE_TABLE: !Ref CurrencyCacheTable
+  #     Policies:
+  #       - DynamoDBCrudPolicy:
+  #           TableName: !Ref CurrencyCacheTable
+  #     Events:
+  #       ScheduleEvent:
+  #         Type: Schedule
+  #         Properties:
+  #           Name: GetCurrencyOnceEvent
+  #           Schedule: rate(1 minute)
+  #           Enabled: true
 
   DecoratedSearchStorageNamespace:
     Type: AWS::RedshiftServerless::Namespace

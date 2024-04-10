@@ -15,6 +15,11 @@ Resources:
     Properties:
       QueueName: !Sub "${AWS::StackName}-FilteredSearchesQueue"
 
+  BackupStorageQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-BackupStorageQueue"
+
   InitStackFunction:
     Type: AWS::Serverless::Function
     DependsOn: 
@@ -28,7 +33,9 @@ Resources:
       Environment:
         Variables:
           DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
+          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
           WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
+          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
       Policies: 
         - Version: '2012-10-17'
           Statement: 
@@ -43,6 +50,7 @@ Resources:
     DependsOn: 
       - OriginalSearchesQueue
       - FilteredSearchesQueue
+      - BackupStorageQueue
       - CurrencyCacheTable
     Properties:
       CodeUri: src/filter-function
@@ -51,10 +59,13 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+          OUTPUT_QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+          BACKUP_STORAGE_QUEUE_URL: !Sub "${BackupStorageQueue}"
       Policies: 
         - SQSSendMessagePolicy:
-            QueueName: !GetAtt FilteredSearchesQueue.QueueName
+            QueueName: !Ref FilteredSearchesQueue
+        - SQSSendMessagePolicy:
+            QueueName: !Ref BackupStorageQueue
       Events:
         SQSEvent:
           Type: SQS
@@ -76,7 +87,10 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+          DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
+          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
+          WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
+          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
       Policies: 
         - Version: '2012-10-17'
           Statement: 
@@ -132,7 +146,7 @@ Resources:
   CurrencyCacheTable:
     Type: AWS::DynamoDB::Table
     Properties: 
-      TableName: !Sub "${AWS::StackName}-CurrencyCacheTable"
+      TableName: !Sub "${AWS::StackName}-currency-cache-table"
       AttributeDefinitions: 
         - AttributeName: dateISO
           AttributeType: S
@@ -158,7 +172,36 @@ Resources:
         ProvisionedThroughput: 
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
+
+  BackupStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Sub "${AWS::StackName}-backup-storage-bucket"
         
+  BackupStorageFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: 
+      - BackupStorageQueue
+      - BackupStorageBucket
+    Properties:
+      CodeUri: src/backup-function
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 15
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BackupStorageBucket
+      Policies: 
+        - S3WritePolicy:
+            BucketName: !Ref BackupStorageBucket
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BackupStorageQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
 #Outputs:
 #  PublishMessageFunctionUrlEndpoint:
 #      Description: "Publish Function URL Endpoint"

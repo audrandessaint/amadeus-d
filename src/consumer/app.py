@@ -6,6 +6,7 @@ def handler(event, context):
 def process_message(message):
     try:
         print(f"Processed message {message['body']}")
+        #example of a process for team handling decoration and such
     except Exception as err:
         print("An error occurred")
         raise err

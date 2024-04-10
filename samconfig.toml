@@ -17,8 +17,8 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-stack_name = "tester11"
-s3_prefix = "tester11"
+stack_name = "tester222"
+s3_prefix = "tester222"
 region = "eu-north-1"
 image_repositories = []
 

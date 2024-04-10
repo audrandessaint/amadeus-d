@@ -1,55 +1,61 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
+Description: Example of processing messages on an SQS queue with Lambda
 Resources:
+  MySQSQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.handler
+      CodeUri: src/consumer
+      Runtime: python3.8
+      Events:
+        MySQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt MySqsQueue.Arn
+            BatchSize: 10
+  MySqsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: queue-bucket
   ProducerFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Handler: app.handler
       CodeUri: src/producer
-      Handler: app.lambda_handler
       Runtime: python3.8
-      Events:
-        Timer:
-          Type: Schedule
-          Properties:
-            Schedule: rate(1 minute)
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt MySqsQueue.QueueName
+        - S3ReadPolicy:
+            BucketName: raw-data-amadeus
       Environment:
         Variables:
-          QUEUE_URL: !Ref MyQueue
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action:
-                - sqs:DeleteMessage
-                - sqs:GetQueueAttributes
-                - sqs:ReceiveMessage
-                - sqs:SendMessage
-              Resource: !GetAtt MyQueue.Arn
-  MyQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: my-queue.fifo
-      FifoQueue: true
-      ContentBasedDeduplication: true
-  ConsumerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/consumer
-      Handler: app.lambda_handler
-      Runtime: python3.8
-      Events:
-        SQSEvent:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt MyQueue.Arn
-            BatchSize: 10
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action:
-                - sqs:DeleteMessage
-                - sqs:GetQueueAttributes
-                - sqs:ReceiveMessage
-              Resource: !GetAtt MyQueue.Arn
+          QUEUE_URL: !GetAtt MySqsQueue.QueueUrl
+          BUCKET_NAME: raw-data-amadeus
+          FILE_KEY: raw-data-example.csv
+      # Events:
+      #   ScheduleEvent:
+      #     Type: Schedule
+      #     Properties:
+      #       Schedule: rate(1 minute)
+
+  # MyS3Bucket:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: raw-data-bucket4
+
+Outputs:
+  MySQSQueue:
+    Description: "SQS Queue ARN"
+    Value: !GetAtt MySqsQueue.Arn
+  # MyS3Bucket1:
+  #   Description: "S3 Bucket ARN"
+  #   Value: !GetAtt MyS3Bucket.Arn
+  # MyS3Bucket2:
+  #   Description: "S3 Bucket Name"
+  #   Value: !Ref MyS3Bucket
+
 
 
 #   OriginalSearchesQueue:

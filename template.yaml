@@ -1,10 +1,44 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-
-Description: >
-  Template to deploy resources of the streaming price benchmark system
-
+Description: Example of processing messages on an SQS queue with Lambda
 Resources:
+  MySQSQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.handler
+      CodeUri: src/consumer
+      Runtime: python3.8
+      Events:
+        MySQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt MySqsQueue.Arn
+            BatchSize: 10
+  MySqsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: queue-bucket
+  ProducerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.handler
+      CodeUri: src/producer
+      Runtime: python3.8
+      MemorySize: 1024 
+      Timeout: 300  
+      EphemeralStorage:
+        Size: 1024
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt MySqsQueue.QueueName
+        - S3ReadPolicy:
+            BucketName: raw-data-amadeus
+      Environment:
+        Variables:
+          QUEUE_URL: !GetAtt MySqsQueue.QueueUrl
+          BUCKET_NAME: raw-data-amadeus
+          FILE_KEY: raw-data-example.csv
+
   OriginalSearchesQueue:
     Type: AWS::SQS::Queue
     Properties:

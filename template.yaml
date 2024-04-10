@@ -15,6 +15,11 @@ Resources:
     Properties:
       QueueName: !Sub "${AWS::StackName}-FilteredSearchesQueue"
 
+  BackupStorageQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-BackupStorageQueue"
+
   InitStackFunction:
     Type: AWS::Serverless::Function
     DependsOn: 
@@ -43,6 +48,7 @@ Resources:
     DependsOn: 
       - OriginalSearchesQueue
       - FilteredSearchesQueue
+      - BackupStorageQueue
       - CurrencyCacheTable
     Properties:
       CodeUri: src/filter-function
@@ -54,7 +60,9 @@ Resources:
           QUEUE_URL: !Sub "${FilteredSearchesQueue}"
       Policies: 
         - SQSSendMessagePolicy:
-            QueueName: !GetAtt FilteredSearchesQueue.QueueName
+            QueueName: !Ref FilteredSearchesQueue
+        - SQSSendMessagePolicy:
+            QueueName: !Ref BackupStorageQueue
       Events:
         SQSEvent:
           Type: SQS
@@ -132,7 +140,7 @@ Resources:
   CurrencyCacheTable:
     Type: AWS::DynamoDB::Table
     Properties: 
-      TableName: !Sub "${AWS::StackName}-CurrencyCacheTable"
+      TableName: !Sub "${AWS::StackName}-currency-cache-table"
       AttributeDefinitions: 
         - AttributeName: currency_type
           AttributeType: S
@@ -142,7 +150,36 @@ Resources:
       ProvisionedThroughput: 
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
+
+  BackupStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Sub "${AWS::StackName}-backup-storage-bucket"
         
+  BackupStorageFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: 
+      - BackupStorageQueue
+      - BackupStorageBucket
+    Properties:
+      CodeUri: src/backup-function
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 15
+      Environment:
+        Variables:
+          QUEUE_URL: !Sub "${BackupStorageQueue}"
+      Policies: 
+        - S3WritePolicy:
+            BucketName: !Ref BackupStorageBucket
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BackupStorageQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
 #Outputs:
 #  PublishMessageFunctionUrlEndpoint:
 #      Description: "Publish Function URL Endpoint"

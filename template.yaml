@@ -116,29 +116,6 @@ Resources:
             Schedule: cron(17 0 * * ? *)
             Enabled: false
 
-  # GetCurrencyFunctionOnce:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     CodeUri: src/get-currency-function-once
-  #     Handler: app.lambda_handler
-  #     Runtime: python3.12
-  #     Timeout: 15
-  #     FunctionUrlConfig:
-  #       AuthType: NONE
-  #     Environment:
-  #       Variables:
-  #         CURRENCY_CACHE_TABLE: !Ref CurrencyCacheTable
-  #     Policies:
-  #       - DynamoDBCrudPolicy:
-  #           TableName: !Ref CurrencyCacheTable
-  #     Events:
-  #       ScheduleEvent:
-  #         Type: Schedule
-  #         Properties:
-  #           Name: GetCurrencyOnceEvent
-  #           Schedule: rate(1 minute)
-  #           Enabled: true
-
   DecoratedSearchStorageNamespace:
     Type: AWS::RedshiftServerless::Namespace
     Properties:

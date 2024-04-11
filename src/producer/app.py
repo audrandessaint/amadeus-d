@@ -40,7 +40,7 @@ def send_message_to_sqs(queue_url, message):
     try:
         response = sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody=json.dumps({'Message': message})
+            MessageBody=json.dumps(message)
         )
         print(f"Message sent: {response['MessageId']}")
     except Exception as e:

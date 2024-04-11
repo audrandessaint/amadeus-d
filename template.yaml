@@ -51,9 +51,7 @@ Resources:
       Environment:
         Variables:
           DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
-          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
           WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
-          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
       Policies: 
         - Version: '2012-10-17'
           Statement: 
@@ -99,10 +97,40 @@ Resources:
             BatchSize: 10
             Enabled: true
 
-  StoreFunction:
+  BatchFunction:
     Type: AWS::Serverless::Function
     DependsOn: 
       - FilteredSearchesQueue
+      - BatchBucket
+    Properties:
+      CodeUri: src/batch-function
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 15
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BatchBucket 
+      Policies: 
+        - S3WritePolicy:
+            BucketName: !Ref BatchBucket
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt FilteredSearchesQueue.Arn
+            BatchSize: 300
+            MaximumBatchingWindowInSeconds: 60
+            Enabled: true
+
+  BatchBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Sub "${AWS::StackName}-batch-bucket"
+
+  StoreFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: 
+      - BatchBucket
       - DecoratedSearchStorageNamespace
       - DecoratedSearchStorageWorkGroup
     Properties:
@@ -113,10 +141,10 @@ Resources:
       Environment:
         Variables:
           DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
-          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
           WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
-          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
       Policies: 
+        - S3ReadPolicy: # vraiment pas sur que cette permission soit nécessaire
+            BucketName: !Ref BackupStorageBucket
         - Version: '2012-10-17'
           Statement: 
             - Effect: Allow
@@ -125,12 +153,11 @@ Resources:
                 - redshift-data:ExecuteStatement
                 - redshift-serverless:GetCredentials
       Events:
-        SQSEvent:
-          Type: SQS
+        ScheduleEvent:
+          Type: Schedule
           Properties:
-            Queue: !GetAtt FilteredSearchesQueue.Arn
-            BatchSize: 10
-            Enabled: true
+            Schedule: cron(* * * * ? *)
+            Enabled: false
 
   GetCurrencyFunction:
     Type: AWS::Serverless::Function

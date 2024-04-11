@@ -79,11 +79,18 @@ Resources:
         Variables:
           OUTPUT_QUEUE_URL: !Sub "${FilteredSearchesQueue}"
           BACKUP_STORAGE_QUEUE_URL: !Sub "${BackupStorageQueue}"
+          CURRENCY_CACHE_TABLE_NAME: !Ref CurrencyCacheTable
       Policies: 
         - SQSSendMessagePolicy:
             QueueName: !Ref FilteredSearchesQueue
         - SQSSendMessagePolicy:
+            QueueName: !GetAtt FilteredSearchesQueue.QueueName
+        - SQSSendMessagePolicy:
             QueueName: !Ref BackupStorageQueue
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt BackupStorageQueue.QueueName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CurrencyCacheTable
       Events:
         SQSEvent:
           Type: SQS

@@ -1,8 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
 Description: >
-  Setup to process files from S3, send messages to SQS, and
-  allow Lambda to invoke itself or other functions.
+  Answer to Amadeus Tech Case
+  - Setup to process files from S3, send messages to SQS, and
+  allow Lambda to invoke itself or other functions in order to
+  guarentee readability of big files.
+  - Setup to backup raw data
+  - Setup to get conversion rates and decorate data and push it to database
 
 Resources:
   ProducerFunction:
@@ -52,30 +56,13 @@ Resources:
               - Effect: Allow
                 Action:
                   - lambda:InvokeFunction
-                Resource: '*'  # Adjusted to remove circular dependency
+                Resource: '*'
 
   OriginalSearchesQueue:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub '${AWS::StackName}-OriginalSearchesQueue'
 
-# Outputs:
-#   ProducerFunctionArn:
-#     Description: "ARN of the Producer Lambda Function"
-#     Value: !GetAtt ProducerFunction.Arn
-
-#   SQSQueueURL:
-#     Description: "URL of the Original Searches SQS Queue"
-#     Value: !Ref OriginalSearchesQueue
-
-#   SQSQueueARN:
-#     Description: "ARN of the Original Searches SQS Queue"
-#     Value: !GetAtt OriginalSearchesQueue.Arn
-
-
-
-
-    
   FilteredSearchesQueue:
     Type: AWS::SQS::Queue
     Properties:

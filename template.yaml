@@ -61,12 +61,12 @@ Resources:
   OriginalSearchesQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub '${AWS::StackName}-OriginalSearchesQueue'
-
-  FilteredSearchesQueue:
+      QueueName: !Sub "${AWS::StackName}-OriginalSearchesQueue"
+    
+  ProcessedSearchesQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub "${AWS::StackName}-FilteredSearchesQueue"
+      QueueName: !Sub "${AWS::StackName}-ProcessedSearchesQueue"
 
   BackupStorageQueue:
     Type: AWS::SQS::Queue
@@ -86,9 +86,7 @@ Resources:
       Environment:
         Variables:
           DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
-          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
           WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
-          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
       Policies: 
         - Version: '2012-10-17'
           Statement: 
@@ -98,28 +96,28 @@ Resources:
                 - redshift-data:ExecuteStatement
                 - redshift-serverless:GetCredentials
 
-  FilterLambdaFunction:
+  ProcessingLambdaFunction:
     Type: AWS::Serverless::Function
     DependsOn: 
       - OriginalSearchesQueue
-      - FilteredSearchesQueue
+      - ProcessedSearchesQueue
       - BackupStorageQueue
       - CurrencyCacheTable
     Properties:
-      CodeUri: src/filter-function
+      CodeUri: src/processing-function
       Handler: app.lambda_handler
       Runtime: python3.12
-      Timeout: 15
+      Timeout: 30
       Environment:
         Variables:
-          OUTPUT_QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+          OUTPUT_QUEUE_URL: !Sub "${ProcessedSearchesQueue}"
           BACKUP_STORAGE_QUEUE_URL: !Sub "${BackupStorageQueue}"
           CURRENCY_CACHE_TABLE_NAME: !Ref CurrencyCacheTable
       Policies: 
         - SQSSendMessagePolicy:
-            QueueName: !Ref FilteredSearchesQueue
+            QueueName: !Ref ProcessedSearchesQueue
         - SQSSendMessagePolicy:
-            QueueName: !GetAtt FilteredSearchesQueue.QueueName
+            QueueName: !GetAtt ProcessedSearchesQueue.QueueName
         - SQSSendMessagePolicy:
             QueueName: !Ref BackupStorageQueue
         - SQSSendMessagePolicy:
@@ -134,10 +132,40 @@ Resources:
             BatchSize: 10
             Enabled: true
 
+  BatchFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: 
+      - ProcessedSearchesQueue
+      - BatchBucket
+    Properties:
+      CodeUri: src/batch-function
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 25
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BatchBucket 
+      Policies: 
+        - S3WritePolicy:
+            BucketName: !Ref BatchBucket
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ProcessedSearchesQueue.Arn
+            BatchSize: 10 # 300
+            #MaximumBatchingWindowInSeconds: 60
+            Enabled: true
+
+  BatchBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Sub "${AWS::StackName}-batch-bucket"
+
   StoreFunction:
     Type: AWS::Serverless::Function
     DependsOn: 
-      - FilteredSearchesQueue
+      - BatchBucket
       - DecoratedSearchStorageNamespace
       - DecoratedSearchStorageWorkGroup
     Properties:
@@ -148,10 +176,11 @@ Resources:
       Environment:
         Variables:
           DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
-          # DB_NAME: !GetAtt DecoratedSearchStorageNamespace.DbName  
           WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
-          # WORKGROUP_NAME: !Ref DecoratedSearchStorageWorkGroup
+          BUCKET_NAME: !Ref BatchBucket
       Policies: 
+        - S3ReadPolicy: # vraiment pas sur que cette permission soit nécessaire
+            BucketName: !Ref BackupStorageBucket
         - Version: '2012-10-17'
           Statement: 
             - Effect: Allow
@@ -160,12 +189,11 @@ Resources:
                 - redshift-data:ExecuteStatement
                 - redshift-serverless:GetCredentials
       Events:
-        SQSEvent:
-          Type: SQS
+        ScheduleEvent:
+          Type: Schedule
           Properties:
-            Queue: !GetAtt FilteredSearchesQueue.Arn
-            BatchSize: 10
-            Enabled: true
+            Schedule: cron(* * * * ? *)
+            Enabled: false
 
   GetCurrencyFunction:
     Type: AWS::Serverless::Function

@@ -142,6 +142,7 @@ Resources:
         Variables:
           DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
           WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
+          BUCKET_NAME: !Ref BatchBucket
       Policies: 
         - S3ReadPolicy: # vraiment pas sur que cette permission soit nécessaire
             BucketName: !Ref BackupStorageBucket
@@ -152,12 +153,19 @@ Resources:
               Action: 
                 - redshift-data:ExecuteStatement
                 - redshift-serverless:GetCredentials
+      # Events:
+      #   ScheduleEvent:
+      #     Type: Schedule
+      #     Properties:
+      #       Schedule: cron(* * * * ? *)
+      #       Enabled: false
       Events:
-        ScheduleEvent:
-          Type: Schedule
+        S3Event:
+          Type: S3
           Properties:
-            Schedule: cron(* * * * ? *)
-            Enabled: false
+            Bucket: !Ref BatchBucket
+            Events: 
+              - s3:ObjectCreated:*
 
   GetCurrencyFunction:
     Type: AWS::Serverless::Function

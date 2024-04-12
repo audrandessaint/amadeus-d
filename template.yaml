@@ -177,6 +177,7 @@ Resources:
         Variables:
           DB_NAME: !Sub "${AWS::StackName}-decorated-search-storage-db"
           WORKGROUP_NAME: !Sub "${AWS::StackName}-decorated-search-storage-wg"
+          BUCKET_NAME: !Ref BatchBucket
       Policies: 
         - S3ReadPolicy: # vraiment pas sur que cette permission soit nécessaire
             BucketName: !Ref BackupStorageBucket

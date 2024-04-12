@@ -57,8 +57,7 @@ def decode_line(line):
             line = line.decode()
 
         # splitting the CSV line
-        # array=line.rstrip().split('^')
-        array=eval(line)
+        array=line.rstrip().split('^')
         if len(array)<=1:
             print("Empty line")
             return None # skip empty line

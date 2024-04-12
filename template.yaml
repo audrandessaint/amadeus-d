@@ -1,33 +1,68 @@
-AWSTemplateFormatVersion: "2010-09-09"
-Transform: AWS::Serverless-2016-10-31
-Description: Example of processing messages on an SQS queue with Lambda
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: >
+  Answer to Amadeus Tech Case
+  - Setup to process files from S3, send messages to SQS, and
+  allow Lambda to invoke itself or other functions in order to
+  guarentee readability of big files.
+  - Setup to backup raw data
+  - Setup to get conversion rates and decorate data and push it to database
+
 Resources:
   ProducerFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.handler
-      CodeUri: src/producer
       Runtime: python3.8
-      MemorySize: 1024 
-      Timeout: 300  
-      EphemeralStorage:
-        Size: 1024
-      Policies:
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt OriginalSearchesQueue.QueueName
-        - S3ReadPolicy:
-            BucketName: raw-data-amadeus
+      CodeUri: src/producer/
+      MemorySize: 2048
+      Timeout: 100
+      Role: !GetAtt LambdaExecutionRole.Arn
       Environment:
         Variables:
           QUEUE_URL: !GetAtt OriginalSearchesQueue.QueueUrl
           BUCKET_NAME: raw-data-amadeus
-          FILE_KEY: raw-data-example.csv
+          FILE_KEY: samplesmall.csv
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaS3SQSInvokePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: 'arn:aws:s3:::raw-data-amadeus/*'
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt OriginalSearchesQueue.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: '*'
 
   OriginalSearchesQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub "${AWS::StackName}-OriginalSearchesQueue"
-    
+      QueueName: !Sub '${AWS::StackName}-OriginalSearchesQueue'
+
   FilteredSearchesQueue:
     Type: AWS::SQS::Queue
     Properties:

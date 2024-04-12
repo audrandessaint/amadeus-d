@@ -1,13 +1,14 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Example of processing messages on an SQS queue with Lambda
+
 Resources:
   ProducerFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.handler
       CodeUri: src/producer
-      Runtime: python3.8
+      Runtime: python3.12
       MemorySize: 1024 
       Timeout: 300  
       EphemeralStorage:
@@ -28,10 +29,10 @@ Resources:
     Properties:
       QueueName: !Sub "${AWS::StackName}-OriginalSearchesQueue"
     
-  FilteredSearchesQueue:
+  ProcessedSearchesQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub "${AWS::StackName}-FilteredSearchesQueue"
+      QueueName: !Sub "${AWS::StackName}-ProcessedSearchesQueue"
 
   BackupStorageQueue:
     Type: AWS::SQS::Queue
@@ -61,28 +62,28 @@ Resources:
                 - redshift-data:ExecuteStatement
                 - redshift-serverless:GetCredentials
 
-  FilterLambdaFunction:
+  ProcessingLambdaFunction:
     Type: AWS::Serverless::Function
     DependsOn: 
       - OriginalSearchesQueue
-      - FilteredSearchesQueue
+      - ProcessedSearchesQueue
       - BackupStorageQueue
       - CurrencyCacheTable
     Properties:
-      CodeUri: src/filter-function
+      CodeUri: src/processing-function
       Handler: app.lambda_handler
       Runtime: python3.12
-      Timeout: 15
+      Timeout: 30
       Environment:
         Variables:
-          OUTPUT_QUEUE_URL: !Sub "${FilteredSearchesQueue}"
+          OUTPUT_QUEUE_URL: !Sub "${ProcessedSearchesQueue}"
           BACKUP_STORAGE_QUEUE_URL: !Sub "${BackupStorageQueue}"
           CURRENCY_CACHE_TABLE_NAME: !Ref CurrencyCacheTable
       Policies: 
         - SQSSendMessagePolicy:
-            QueueName: !Ref FilteredSearchesQueue
+            QueueName: !Ref ProcessedSearchesQueue
         - SQSSendMessagePolicy:
-            QueueName: !GetAtt FilteredSearchesQueue.QueueName
+            QueueName: !GetAtt ProcessedSearchesQueue.QueueName
         - SQSSendMessagePolicy:
             QueueName: !Ref BackupStorageQueue
         - SQSSendMessagePolicy:
@@ -100,13 +101,13 @@ Resources:
   BatchFunction:
     Type: AWS::Serverless::Function
     DependsOn: 
-      - FilteredSearchesQueue
+      - ProcessedSearchesQueue
       - BatchBucket
     Properties:
       CodeUri: src/batch-function
       Handler: app.lambda_handler
       Runtime: python3.12
-      Timeout: 15
+      Timeout: 25
       Environment:
         Variables:
           BUCKET_NAME: !Ref BatchBucket 
@@ -117,9 +118,9 @@ Resources:
         SQSEvent:
           Type: SQS
           Properties:
-            Queue: !GetAtt FilteredSearchesQueue.Arn
-            BatchSize: 300
-            MaximumBatchingWindowInSeconds: 60
+            Queue: !GetAtt ProcessedSearchesQueue.Arn
+            BatchSize: 10 # 300
+            #MaximumBatchingWindowInSeconds: 60
             Enabled: true
 
   BatchBucket:
